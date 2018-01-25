@@ -25,6 +25,8 @@ use OCP\Files\FileInfo;
 use OC\Files\Filesystem;
 use OC\Files\View;
 use OCP\Util;
+use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\EventDispatcher\GenericEvent;
 
 class HookConnector {
 	/**
@@ -37,6 +39,8 @@ class HookConnector {
 	 */
 	private $view;
 
+	/** @var EventDispatcher  */
+	private $eventDispatcher;
 	/**
 	 * @var FileInfo[]
 	 */
@@ -48,9 +52,10 @@ class HookConnector {
 	 * @param Root $root
 	 * @param View $view
 	 */
-	public function __construct(Root $root, View $view) {
+	public function __construct(Root $root, View $view, EventDispatcher $eventDispatcher) {
 		$this->root = $root;
 		$this->view = $view;
+		$this->eventDispatcher = $eventDispatcher;
 	}
 
 	public function viewToNode() {
@@ -58,16 +63,16 @@ class HookConnector {
 		Util::connectHook('OC_Filesystem', 'post_write', $this, 'postWrite');
 
 		Util::connectHook('OC_Filesystem', 'create', $this, 'create');
-		Util::connectHook('OC_Filesystem', 'post_create', $this, 'postCreate');
+		$this->eventDispatcher->addListener('file.aftercreate', [$this, 'postCreate']);
 
 		Util::connectHook('OC_Filesystem', 'delete', $this, 'delete');
-		Util::connectHook('OC_Filesystem', 'post_delete', $this, 'postDelete');
+		$this->eventDispatcher->addListener('file.afterdelete', [$this, 'postDelete']);
 
 		Util::connectHook('OC_Filesystem', 'rename', $this, 'rename');
-		Util::connectHook('OC_Filesystem', 'post_rename', $this, 'postRename');
+		$this->eventDispatcher->addListener('file.afterrename', [$this, 'postRename']);
 
 		Util::connectHook('OC_Filesystem', 'copy', $this, 'copy');
-		Util::connectHook('OC_Filesystem', 'post_copy', $this, 'postCopy');
+		$this->eventDispatcher->addListener('file.aftercopy', [$this, 'postCopy']);
 
 		Util::connectHook('OC_Filesystem', 'touch', $this, 'touch');
 		Util::connectHook('OC_Filesystem', 'post_touch', $this, 'postTouch');
@@ -88,8 +93,8 @@ class HookConnector {
 		$this->root->emit('\OC\Files', 'preCreate', [$node]);
 	}
 
-	public function postCreate($arguments) {
-		$node = $this->getNodeForPath($arguments['path']);
+	public function postCreate(GenericEvent $arguments) {
+		$node = $this->getNodeForPath($arguments->getArgument('path'));
 		$this->root->emit('\OC\Files', 'postCreate', [$node]);
 	}
 
@@ -99,8 +104,8 @@ class HookConnector {
 		$this->root->emit('\OC\Files', 'preDelete', [$node]);
 	}
 
-	public function postDelete($arguments) {
-		$node = $this->getNodeForPath($arguments['path']);
+	public function postDelete(GenericEvent $arguments) {
+		$node = $this->getNodeForPath($arguments->getArgument('path'));
 		unset($this->deleteMetaCache[$node->getPath()]);
 		$this->root->emit('\OC\Files', 'postDelete', [$node]);
 	}
@@ -121,9 +126,9 @@ class HookConnector {
 		$this->root->emit('\OC\Files', 'preRename', [$source, $target]);
 	}
 
-	public function postRename($arguments) {
-		$source = $this->getNodeForPath($arguments['oldpath']);
-		$target = $this->getNodeForPath($arguments['newpath']);
+	public function postRename(GenericEvent $arguments) {
+		$source = $this->getNodeForPath($arguments->getArgument('oldpath'));
+		$target = $this->getNodeForPath($arguments->getArgument('newpath'));
 		$this->root->emit('\OC\Files', 'postRename', [$source, $target]);
 	}
 
@@ -133,9 +138,9 @@ class HookConnector {
 		$this->root->emit('\OC\Files', 'preCopy', [$source, $target]);
 	}
 
-	public function postCopy($arguments) {
-		$source = $this->getNodeForPath($arguments['oldpath']);
-		$target = $this->getNodeForPath($arguments['newpath']);
+	public function postCopy(GenericEvent $arguments) {
+		$source = $this->getNodeForPath($arguments->getArgument('oldpath'));
+		$target = $this->getNodeForPath($arguments->getArgument('newpath'));
 		$this->root->emit('\OC\Files', 'postCopy', [$source, $target]);
 	}
 

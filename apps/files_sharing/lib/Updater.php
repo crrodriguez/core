@@ -24,14 +24,16 @@
 
 namespace OCA\Files_Sharing;
 
+use Symfony\Component\EventDispatcher\GenericEvent;
+
 class Updater {
 
 	/**
 	 * @param array $params
 	 */
-	static public function renameHook($params) {
-		self::renameChildren($params['oldpath'], $params['newpath']);
-		self::moveShareToShare($params['newpath']);
+	static public function renameHook(GenericEvent $params) {
+		self::renameChildren($params->getArgument('oldpath'), $params->getArgument('newpath'));
+		self::moveShareToShare($params->getArgument('newpath'));
 	}
 
 	/**
@@ -52,7 +54,15 @@ class Updater {
 			return;
 		}
 
-		$src = $userFolder->get($path);
+		/**
+		 * What if the path is not relative to $userFolder So as a precaution
+		 * we could also try to get the src from the RootFolder.
+		 */
+		try {
+			$src = $userFolder->get($path);
+		} catch (\Exception $e) {
+			$src = \OC::$server->getRootFolder()->get($path);
+		}
 
 		$shareManager = \OC::$server->getShareManager();
 
