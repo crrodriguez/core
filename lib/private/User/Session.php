@@ -988,21 +988,33 @@ class Session implements IUserSession, Emitter {
 	}
 
 	public function verifyAuthHeaders($request) {
-		foreach ($this->getAuthModules(true) as $module) {
-			$user = $module->auth($request);
-			if ($user !== null) {
-				if ($this->isLoggedIn() && $this->getUser()->getUID() !== $user->getUID()) {
-					// the session is bad -> kill it
-					$this->logout();
-					return false;
+		$shallLogout = false;
+		try {
+			$lastUser = null;
+			foreach ($this->getAuthModules(true) as $module) {
+				$user = $module->auth($request);
+				if ($user !== null) {
+					if ($this->isLoggedIn() && $this->getUser()->getUID() !== $user->getUID()) {
+						$shallLogout = true;
+						break;
+					}
+					if ($lastUser !== null && $user->getUID() !== $lastUser->getUID()) {
+						$shallLogout = true;
+						break;
+					}
+					$lastUser = $user;
 				}
-				return true;
 			}
-		}
 
-		// the session is bad -> kill it
-		$this->logout();
-		return false;
+		} catch (Exception $ex) {
+			$shallLogout = true;
+		}
+		if ($shallLogout) {
+			// the session is bad -> kill it
+			$this->logout();
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -1010,10 +1022,10 @@ class Session implements IUserSession, Emitter {
 	 * @return \Generator | IAuthModule[]
 	 * @throws Exception
 	 */
-	private function getAuthModules($includeBuiltIn) {
+	protected function getAuthModules($includeBuiltIn) {
 		if ($includeBuiltIn) {
 			yield new TokenAuthModule($this->session, $this->tokenProvider, $this->manager);
-			yield new BasicAuthModule($this->manager);
+			yield new BasicAuthModule($this->manager, $this);
 		}
 
 		$modules = $this->serviceLoader->load(['auth-modules']);

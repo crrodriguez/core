@@ -25,16 +25,24 @@ namespace OC\User;
 
 use OCP\Authentication\IAuthModule;
 use OCP\IRequest;
-use OCP\IUser;
 use OCP\IUserManager;
 
 class BasicAuthModule implements IAuthModule {
 
 	/** @var IUserManager */
 	private $manager;
+	/** @var Session */
+	private $session;
 
-	public function __construct(IUserManager $manager) {
+	/**
+	 * BasicAuthModule constructor.
+	 *
+	 * @param IUserManager $manager
+	 * @param Session $session
+	 */
+	public function __construct(IUserManager $manager, Session $session) {
 		$this->manager = $manager;
+		$this->session = $session;
 	}
 
 	/**
@@ -45,17 +53,12 @@ class BasicAuthModule implements IAuthModule {
 			return null;
 		}
 
-		// check uid and password
-		$user = $this->manager->checkPassword($request->server['PHP_AUTH_USER'], $request->server['PHP_AUTH_PW']);
-		if ($user instanceof IUser) {
-			return $user;
+		// reuse logClientIn because this method handles app passwords as well as regular credentials
+		if (!$this->session->logClientIn($request->server['PHP_AUTH_USER'], $request->server['PHP_AUTH_PW'], $request)) {
+			throw new \Exception('Invalid credentials');
 		}
-		// check email and password
-		$users = $this->manager->getByEmail($request->server['PHP_AUTH_USER']);
-		if (count($users) !== 1) {
-			return null;
-		}
-		return $this->manager->checkPassword($users[0]->getUID(), $request->server['PHP_AUTH_PW']);
+
+		return $this->manager->get($request->server['PHP_AUTH_USER']);
 	}
 
 	/**
@@ -66,6 +69,10 @@ class BasicAuthModule implements IAuthModule {
 			return '';
 		}
 
+		if ($this->session->getSession()->exists('app_password')) {
+			// TODO: use proper password
+			throw new \Exception('Not implemented yet');
+		}
 		return $request->server['PHP_AUTH_PW'];
 	}
 }

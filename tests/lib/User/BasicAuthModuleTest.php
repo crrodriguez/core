@@ -24,7 +24,9 @@ namespace Test\User;
 
 
 use OC\User\BasicAuthModule;
+use OC\User\Session;
 use OCP\IRequest;
+use OCP\ISession;
 use OCP\IUser;
 use OCP\IUserManager;
 use Test\TestCase;
@@ -37,30 +39,25 @@ class BasicAuthModuleTest extends TestCase {
 	private $request;
 	/** @var IUser | \PHPUnit_Framework_MockObject_MockObject */
 	private $user;
+	/** @var Session | \PHPUnit_Framework_MockObject_MockObject */
+	private $session;
 
 	public function setUp() {
 		parent::setUp();
 		$this->manager = $this->createMock(IUserManager::class);
 		$this->request = $this->createMock(IRequest::class);
 		$this->user = $this->createMock(IUser::class);
+		$this->session = $this->createMock(Session::class);
 
 		$this->user->expects($this->any())->method('getUID')->willReturn('user1');
 
-		$this->manager->expects($this->any())->method('checkPassword')
+		$this->session->expects($this->any())->method('logClientIn')
 			->willReturnMap([
-				['user1', '123456', $this->user],
-				['user@example.com', '123456', $this->user],
-				['user2', '123456', null],
-				['not-unique@example.com', '123456', null],
-				['unique@example.com', '123456', null],
+				['user1', '123456', $this->request, true],
+				['user2', '123456', $this->request, false],
 			]);
 
-		$this->manager->expects($this->any())->method('getByEmail')
-			->willReturnMap([
-				['not-unique@example.com', [$this->user, $this->user]],
-				['unique@example.com', [$this->user]],
-				['user2', []]
-			]);
+		$this->manager->expects($this->any())->method('get')->willReturn($this->user);
 	}
 
 	/**
@@ -69,16 +66,26 @@ class BasicAuthModuleTest extends TestCase {
 	 * @param string $userId
 	 */
 	public function testAuth($expectsUser, $userId) {
-		$module = new BasicAuthModule($this->manager);
+		$module = new BasicAuthModule($this->manager, $this->session);
 		$this->request->server = [
 			'PHP_AUTH_USER' => $userId,
 			'PHP_AUTH_PW' => '123456',
 		];
-		$this->assertEquals($expectsUser ? $this->user : null, $module->auth($this->request));
+		if (!$expectsUser) {
+			$this->expectException(\Exception::class);
+		}
+		$this->assertEquals($this->user, $module->auth($this->request));
 	}
 
 	public function testGetUserPassword() {
-		$module = new BasicAuthModule($this->manager);
+
+		$s = $this->createMock(ISession::class);
+		$s->expects($this->any())->method('exists')->willReturn(false);
+
+		$this->session->expects($this->any())->method('getSession')->willReturn($s);
+
+		// TODO: test app password
+		$module = new BasicAuthModule($this->manager, $this->session);
 		$this->request->server = [
 			'PHP_AUTH_USER' => 'user1',
 			'PHP_AUTH_PW' => '123456',
@@ -92,9 +99,6 @@ class BasicAuthModuleTest extends TestCase {
 	public function providesCredentials() {
 		return [
 			'user1 can login' => [true, 'user1'],
-			'user1 can login with email' => [true, 'user@example.com'],
-			'unique email can login' => [true, 'unique@example.com'],
-			'not unique email can not login' => [false, 'not-unique@example.com'],
 			'user2 is not known' => [false, 'user2'],
 		];
 	}
