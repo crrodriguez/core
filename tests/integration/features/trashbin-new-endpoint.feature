@@ -96,7 +96,6 @@ Feature: trashbin-new-endpoint
 			| /textfile3.txt |
 			| /textfile4.txt |
 
-	@skip
 	Scenario: trashbin can store two files with same name but different origins
 		Given user "user0" exists
 		And user "user0" created a folder "/folderA"
